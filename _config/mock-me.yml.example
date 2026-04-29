@@ -1,1 +1,17 @@
 
+
+Sunnysideup\MockMe\Api\CreateMockData:
+  records_per_class: 12
+  skip_validation: true
+  auto_fix_validation_errors: true
+  truncate_before_create: false  # WARNING: Deletes ALL data!
+  classes_to_exclude:
+    - 'MyApp\\Models\\SensitiveData'
+  fields_to_skip_per_class:
+    'MyApp\\Models\\MyClass':
+      - 'ProblematicField'
+      - 'AnotherField'
+  field_values_per_class:
+    'MyApp\\Models\\MyClass':
+      HideTitle: false
+      Status: 'Active'
