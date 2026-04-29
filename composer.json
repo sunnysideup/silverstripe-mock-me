@@ -13,33 +13,19 @@
   ],
   "license": "BSD-3-Clause",
   "require": {
-    "silverstripe/framework": "^5.0",
+    "silverstripe/framework": "^6.0",
     "silverstripe/admin": "^2.0"
   },
   "require-dev": {
-    "sunnysideup/sswebpack_engine_only": "5.x-dev",
-    "silverleague/ideannotator": "*",
-    "phpunit/phpunit": "^9.6",
-    "squizlabs/php_codesniffer": "^3.7",
-    "silverstripe/standards": "^1",
-    "phpstan/extension-installer": "^1.3"
+
   },
   "autoload": {
     "psr-4": {
       "Sunnysideup\\MockMe\\": "src/"
     }
   },
-  "extra": {
-    "expose": [
-      "client/dist"
-    ]
-  },
   "minimum-stability": "dev",
   "prefer-stable": true,
-  "bin": [
-    "bin/sake-npm-build-mock-me.sh",
-    "bin/sake-npm-watch-mock-me.sh"
-  ],
   "authors": [
     {
       "name": "Nicolaas Thiemen Francken",
