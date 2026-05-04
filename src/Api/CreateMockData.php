@@ -55,9 +55,18 @@ use Throwable;
  * Usage:
  *   \Sunnysideup\MockMe\Api\CreateMockData::create()->run();
  *
+ * SiteTree subclasses are handled specially:
+ *   - Only ::$pages_per_class records are created per page type (default 3).
+ *   - The Parent relationship respects the page tree's classic configs:
+ *       * allowed_children  — only assign a parent that allows this child class.
+ *       * default_parent    — preferred parent (URL segment or class name).
+ *       * can_be_root       — if false, we try harder to find a non-root parent
+ *                             and warn if we can't.
+ *
  * Configuration (in YML):
  *   Sunnysideup\MockMe\Api\CreateMockData:
  *     records_per_class: 12
+ *     pages_per_class: 3                # SiteTree subclasses only
  *     skip_validation: true
  *     auto_fix_validation_errors: true
  *     truncate_before_create: false  # WARNING: Deletes ALL data!
@@ -88,6 +97,12 @@ class CreateMockData
      * How many rows to create per concrete DataObject class.
      */
     private static int $records_per_class = 12;
+
+    /**
+     * How many rows to create per concrete SiteTree subclass.
+     * Pages multiply quickly through the tree, so this is kept small.
+     */
+    private static int $pages_per_class = 3;
 
     /**
      * How many related rows to attach per record for has_many / many_many.
@@ -439,7 +454,13 @@ class CreateMockData
 
     protected function createRecordsForClass(string $className): void
     {
-        $count  = (int) Config::inst()->get(static::class, 'records_per_class');
+        // SiteTree subclasses get their own (smaller) count so the page tree
+        // doesn't blow out.
+        if ($this->isSiteTreeSubclass($className)) {
+            $count = (int) Config::inst()->get(static::class, 'pages_per_class');
+        } else {
+            $count = (int) Config::inst()->get(static::class, 'records_per_class');
+        }
         $skip   = (array) Config::inst()->get(static::class, 'fields_to_skip');
         $config = Injector::inst()->get($className)->config();
         $dbFields = (array) $config->get('db');
@@ -648,6 +669,19 @@ class CreateMockData
                     continue;
                 }
 
+                // SiteTree Parent — honour allowed_children / default_parent / can_be_root
+                if ($relationName === 'Parent'
+                    && $this->isSiteTreeSubclass($className)
+                    && $this->isSiteTreeSubclass($relatedClass)
+                ) {
+                    $parentId = $this->findValidParentIdForSiteTree($className, (int) $obj->ID);
+                    if ($parentId !== (int) $obj->ID) {
+                        $obj->ParentID = $parentId;
+                        $changed = true;
+                    }
+                    continue;
+                }
+
                 // Special handling for File/Image has_one relationships
                 if (is_a($relatedClass, File::class, true)) {
                     $fileId = $this->getOrCreateDummyFile($relatedClass);
@@ -692,6 +726,11 @@ class CreateMockData
 
             // --- has_many and many_many: attach a couple of related records
             foreach ($hasMany as $relationName => $relatedClass) {
+                // Skip SiteTree's Children — Parent was set deliberately above
+                // and `add()` on Children would clobber that ParentID.
+                if ($relationName === 'Children' && $this->isSiteTreeSubclass($className)) {
+                    continue;
+                }
                 $this->attachRelations($obj, $relationName, $relatedClass, $perRecord);
             }
             foreach ($manyMany as $relationName => $relatedClass) {
@@ -869,6 +908,204 @@ class CreateMockData
         }
 
         return false;
+    }
+
+    // =================================================================
+    //  SiteTree helpers
+    // =================================================================
+
+    /**
+     * Is this class SiteTree (or a subclass of it)?
+     */
+    protected function isSiteTreeSubclass(string $className): bool
+    {
+        $siteTreeClass = 'SilverStripe\\CMS\\Model\\SiteTree';
+        if (!class_exists($siteTreeClass)) {
+            return false;
+        }
+        return $className === $siteTreeClass || is_subclass_of($className, $siteTreeClass);
+    }
+
+    /**
+     * Whether $childClass is permitted under $parentClass according to
+     * the parent's `allowed_children` config.
+     *
+     * Mirrors SilverStripe's own resolution rules:
+     *   - 'none' / ['none'] / empty → nothing allowed
+     *   - '*Foo'                    → exact class only (subclasses excluded)
+     *   - 'Foo'                     → class and all subclasses
+     */
+    protected function isAllowedChild(string $parentClass, string $childClass): bool
+    {
+        $candidates = Config::inst()->get($parentClass, 'allowed_children');
+
+        if (empty($candidates)) {
+            return false;
+        }
+        if ($candidates === 'none' || $candidates === ['none']) {
+            return false;
+        }
+        if (is_string($candidates)) {
+            $candidates = [$candidates];
+        }
+
+        foreach ($candidates as $candidate) {
+            if (!is_string($candidate)) {
+                continue;
+            }
+            $strict = false;
+            if (substr($candidate, 0, 1) === '*') {
+                $strict = true;
+                $candidate = substr($candidate, 1);
+            }
+            if (!class_exists($candidate)) {
+                continue;
+            }
+            if ($strict) {
+                if ($childClass === $candidate) {
+                    return true;
+                }
+            } else {
+                if ($childClass === $candidate || is_subclass_of($childClass, $candidate)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Whether the class permits being placed at the site root.
+     * Defaults to true if `can_be_root` is unset.
+     */
+    protected function canBeRoot(string $className): bool
+    {
+        $canBeRoot = Config::inst()->get($className, 'can_be_root');
+        if ($canBeRoot === null) {
+            return true;
+        }
+        return (bool) $canBeRoot;
+    }
+
+    /**
+     * Resolve `default_parent` to a SiteTree ID.
+     * Conventionally the value is a URL segment, but some projects
+     * use a class name; we try URL segment first, then class name.
+     */
+    protected function getDefaultParentId(string $className): ?int
+    {
+        $defaultParent = Config::inst()->get($className, 'default_parent');
+        if (!$defaultParent || !is_string($defaultParent)) {
+            return null;
+        }
+
+        $siteTreeClass = 'SilverStripe\\CMS\\Model\\SiteTree';
+        if (!class_exists($siteTreeClass)) {
+            return null;
+        }
+
+        // 1. URL segment (the documented form)
+        try {
+            $parent = DataObject::get($siteTreeClass)
+                ->filter('URLSegment', $defaultParent)
+                ->first();
+            if ($parent) {
+                return (int) $parent->ID;
+            }
+        } catch (Throwable $e) {
+            // ignore and fall through
+        }
+
+        // 2. Class name (some projects do this)
+        if (class_exists($defaultParent) && is_a($defaultParent, $siteTreeClass, true)) {
+            try {
+                $parent = DataObject::get($defaultParent)->first();
+                if ($parent) {
+                    return (int) $parent->ID;
+                }
+            } catch (Throwable $e) {
+                // ignore
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Pick a Parent ID for a SiteTree subclass, honouring the page tree's
+     * classic configs.
+     *
+     * Strategy, in order:
+     *   1. default_parent (if it resolves to a real, allowed page)
+     *   2. a page from this run whose class allows $childClass
+     *   3. a pre-existing page in the DB whose class allows $childClass
+     *   4. 0 (root) — and a warning if can_be_root is false
+     */
+    protected function findValidParentIdForSiteTree(string $childClass, int $childId): int
+    {
+        $siteTreeClass = 'SilverStripe\\CMS\\Model\\SiteTree';
+
+        // 1. default_parent
+        $defaultParentId = $this->getDefaultParentId($childClass);
+        if ($defaultParentId !== null && $defaultParentId !== $childId) {
+            try {
+                $defaultParent = DataObject::get($siteTreeClass)->byID($defaultParentId);
+                if ($defaultParent
+                    && $this->isAllowedChild(get_class($defaultParent), $childClass)
+                ) {
+                    return $defaultParentId;
+                }
+            } catch (Throwable $e) {
+                // fall through
+            }
+        }
+
+        // 2. Pages we created in this run
+        $candidates = [];
+        foreach ($this->createdIds as $cls => $ids) {
+            if (!$this->isSiteTreeSubclass($cls)) {
+                continue;
+            }
+            if (!$this->isAllowedChild($cls, $childClass)) {
+                continue;
+            }
+            foreach ($ids as $id) {
+                // For self-class hierarchy, only point upward in ID order
+                // to avoid A→B and B→A loops.
+                if ($cls === $childClass && $id >= $childId) {
+                    continue;
+                }
+                $candidates[] = (int) $id;
+            }
+        }
+        if (!empty($candidates)) {
+            return $candidates[array_rand($candidates)];
+        }
+
+        // 3. Pre-existing pages in the DB
+        try {
+            $existing = DataObject::get($siteTreeClass)->limit(50);
+            foreach ($existing as $page) {
+                if ((int) $page->ID === $childId) {
+                    continue;
+                }
+                if ($this->isAllowedChild(get_class($page), $childClass)) {
+                    return (int) $page->ID;
+                }
+            }
+        } catch (Throwable $e) {
+            // ignore
+        }
+
+        // 4. Nothing found — warn if can_be_root forbids root placement
+        if (!$this->canBeRoot($childClass)) {
+            $shortClass = substr($childClass, strrpos($childClass, '\\') + 1);
+            DB::alteration_message(
+                "  ! {$shortClass} has can_be_root=false but no valid parent was found; placing at root anyway.",
+                'error'
+            );
+        }
+        return 0;
     }
 
     /**
