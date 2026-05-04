@@ -105,9 +105,7 @@ class CreateMockData
         'SilverStripe\\Assets\\Folder',
         'SilverStripe\\Versioned\\ChangeSet',
         'SilverStripe\\Versioned\\ChangeSetItem',
-        'DNADesign\\Elemental\\Models\\BaseElement',
         'SilverStripe\\Assets\\Shortcodes\\FileLink',
-        'SilverStripe\\CMS\\Model\\SiteTree',
         'SilverStripe\\CMS\\Model\\SiteTreeLink',
         'SilverStripe\\Security\\Group',
         'SilverStripe\\Security\\LoginAttempt',
@@ -170,8 +168,13 @@ class CreateMockData
      * Useful for temporary exclusions or project-specific skips.
      * Format: ['ClassName1', 'ClassName2']
      * Example: ['MyApp\\Models\\ProblematicClass', 'MyApp\\Models\\AnotherClass']
+     * This is NOT recursive — it only skips the specified classes, not their subclasses.
+     * Use classes_to_exclude for recursive exclusion.
      */
-    private static array $classes_to_skip = [];
+    private static array $classes_to_skip = [
+        'DNADesign\\Elemental\\Models\\BaseElement',
+        'SilverStripe\\CMS\\Model\\SiteTree',
+    ];
 
     /**
      * Classes to force create even if canCreate() returns false.
@@ -398,17 +401,19 @@ class CreateMockData
     protected function getEligibleClasses(): array
     {
         $exclude = (array) Config::inst()->get(static::class, 'classes_to_exclude');
-        $skip = (array) Config::inst()->get(static::class, 'classes_to_skip');
-
-        // Combine both exclusion lists
-        $allExclusions = array_merge($exclude, $skip);
+        $skips = (array) Config::inst()->get(static::class, 'classes_to_skip');
 
         $all = ClassInfo::subclassesFor(DataObject::class, false);
         $out = [];
         foreach ($all as $className) {
             // Check exact match or if it's a subclass of excluded classes
-            foreach ($allExclusions as $excludedClass) {
+            foreach ($exclude as $excludedClass) {
                 if ($className === $excludedClass || is_subclass_of($className, $excludedClass)) {
+                    continue 2; // Skip to next className
+                }
+            }
+            foreach ($skips as $skippedClass) {
+                if ($className === $skippedClass) {
                     continue 2; // Skip to next className
                 }
             }
