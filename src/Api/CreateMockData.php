@@ -579,7 +579,7 @@ class CreateMockData
                 }
 
                 // write($showDebug, $forceInsert, $forceWrite, $writeComponents, $skipValidation)
-                $id = (int) $obj->write(false, false, false, false, $skipValidation);
+                $id = (int) $this->writeObject($obj, $className, true);
                 $this->createdIds[$className][] = $id;
                 $created++;
             } catch (Throwable $e) {
@@ -675,7 +675,7 @@ class CreateMockData
             if ($changed) {
                 try {
                     $skipValidation = (bool) Config::inst()->get(static::class, 'skip_validation');
-                    $obj->write(false, false, false, false, $skipValidation);
+                    $this->writeObject($obj, $className, $skipValidation);
                 } catch (Throwable $e) {
                     $shortClass = substr($className, strrpos($className, '\\') + 1);
                     $errorMsg = $e->getMessage();
@@ -928,7 +928,7 @@ class CreateMockData
                 $file = Injector::inst()->create($className);
                 $file->setFromLocalFile($tmpFile, $filename);
                 $file->Title = "Mock " . ($isImage ? "Image" : "File") . " {$i}";
-                $file->write(false, false, false, false, true); // Skip validation
+                $this->writeObject($file, $className, true);
                 $file->publishSingle();
 
                 $this->createdFileIds[$className][] = $file->ID;
@@ -1503,5 +1503,26 @@ class CreateMockData
             'colours'    => ['#ff0000', '#00ff00', '#0000ff', '#ffaa00', '#aa00ff', '#00aaff'],
             'lorem'      => 'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.',
         ];
+    }
+
+    protected function writeObject(DataObject $obj, string $className, bool $skipValidation = true): int
+    {
+        try {
+            // write($showDebug, $forceInsert, $forceWrite, $writeComponents, $skipValidation)
+            $id = $obj->write(false, false, false, false, $skipValidation); // Skip validation
+            if ($obj->hasMethod('publishRecursive')) {
+                $obj->publishRecursive();
+            }
+            if ($obj->hasMethod('flushCache')) {
+                $obj->flushCache();
+            }
+            return $id;
+        } catch (ValidationException $e) {
+            DB::alteration_message("Validation error for {$className}: " . $e->getMessage(), 'error');
+            return 0;
+        } catch (Throwable $e) {
+            DB::alteration_message("Error writing {$className}: " . $e->getMessage(), 'error');
+            return 0;
+        }
     }
 }
