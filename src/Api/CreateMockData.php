@@ -31,6 +31,7 @@ use SilverStripe\Assets\File;
 use SilverStripe\Assets\Image;
 use SilverStripe\Assets\Storage\AssetStore;
 use SilverStripe\Control\Director;
+use SilverStripe\Core\Validation\ValidationException;
 use SilverStripe\ORM\FieldType\DBYear;
 use SilverStripe\Security\Member;
 use SilverStripe\Security\MemberPassword;
