@@ -9,6 +9,7 @@
     "test",
     "dev-only",
     "test data",
+    "fake",
     "lipsum"
   ],
   "license": "BSD-3-Clause",
