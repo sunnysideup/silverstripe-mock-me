@@ -29,11 +29,9 @@ use SilverStripe\ORM\FieldType\DBTime;
 use SilverStripe\ORM\FieldType\DBVarchar;
 use SilverStripe\Assets\File;
 use SilverStripe\Assets\Image;
-use SilverStripe\Assets\Storage\AssetStore;
 use SilverStripe\Control\Director;
 use SilverStripe\Core\Validation\ValidationException;
 use SilverStripe\ORM\FieldType\DBYear;
-use SilverStripe\Security\Member;
 use SilverStripe\Security\MemberPassword;
 use SilverStripe\Security\Permission;
 use SilverStripe\Security\Security;
@@ -123,9 +121,7 @@ class CreateMockData
         'SilverStripe\\Versioned\\ChangeSetItem',
         'SilverStripe\\Assets\\Shortcodes\\FileLink',
         'SilverStripe\\CMS\\Model\\SiteTreeLink',
-        'SilverStripe\\Security\\Group',
         'SilverStripe\\Security\\LoginAttempt',
-        'SilverStripe\\Security\\Member',
         'SilverStripe\\Security\\PermissionRole',
         'SilverStripe\\Security\\PermissionRoleCode',
         'SilverStripe\\Security\\RememberLoginHash',
@@ -135,8 +131,6 @@ class CreateMockData
         'SilverStripe\\Reports\\ExternalLinks\\Model\\BrokenExternalLink',
         'SilverStripe\\Reports\\ExternalLinks\\Model\\BrokenExternalPageTrack',
         'SilverStripe\\Reports\\ExternalLinks\\Model\\BrokenExternalPageTrackStatus',
-        'SilverStripe\\ErrorPage\\ErrorPage',
-        'SilverStripe\\UserForms\\Model\\EditableFormField',
         'SilverStripe\\SiteConfig\\SiteConfig',
     ];
 
@@ -144,7 +138,11 @@ class CreateMockData
      * Fields that should never be written to directly (set by the ORM).
      */
     private static array $fields_to_skip = [
-        'ID', 'ClassName', 'LastEdited', 'Created', 'Version',
+        'ID',
+        'ClassName',
+        'LastEdited',
+        'Created', 
+        'Version',
     ];
 
     /**
@@ -190,6 +188,8 @@ class CreateMockData
     private static array $classes_to_skip = [
         'DNADesign\\Elemental\\Models\\BaseElement',
         'SilverStripe\\CMS\\Model\\SiteTree',
+        'SilverStripe\\UserForms\\Model\\EditableFormField',
+        'SilverStripe\\ErrorPage\\ErrorPage',
     ];
 
     /**
